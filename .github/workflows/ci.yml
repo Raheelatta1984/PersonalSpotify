@@ -9,17 +9,45 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
       - run: npm ci
+
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Build audio fingerprint index
+        run: npm run index:audio
+
       - name: Tests
-        run: npm test
+        id: tests
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/songhub-tests.log
+
       - name: Production build
         run: npm run build
+
+      - name: Report test failures on the PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### CI failure in \`${{ github.job }}\`"
+            echo ''
+            echo '```text'
+            tail -n 160 /tmp/songhub-tests.log 2>/dev/null || echo 'no test log captured'
+            echo '```'
+          } > /tmp/ci-report.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/ci-report.md || true

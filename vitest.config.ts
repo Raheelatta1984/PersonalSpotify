@@ -10,6 +10,8 @@ export default defineConfig({
     hookTimeout: 60000,
     reporters: ["default"],
     pool: "threads",
+    // CI runners are smaller; keep parallelism bounded so audio tests stay stable.
+    maxWorkers: process.env.CI ? 4 : undefined,
   },
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },
 });
