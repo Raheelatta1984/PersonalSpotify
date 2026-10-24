@@ -70,7 +70,7 @@ npm run dev        # dev server (0.0.0.0:3000)
 npm run build      # production build
 npm run start      # production server
 npm run typecheck  # tsc --noEmit
-npm run test       # 1,500+ tests
+npm run test       # 1,537 tests across 12 suites
 npm run verify     # typecheck + tests
 npm run index:audio# pre-build the audio fingerprint index
 ```
@@ -255,7 +255,7 @@ Rendering speed is ~140× realtime at 8 kHz, ~50× at 22.05 kHz.
 ## Testing
 
 ```bash
-npm test          # 1,500+ cases, ~90 s
+npm test          # 1,537 cases, ~75 s
 npm run verify    # typecheck + tests
 ```
 
@@ -322,7 +322,7 @@ src/
     store/                library, playlists, events, analytics, radio
     client/               browser-side mic capture + PCM decode
 scripts/build-index.ts    pre-build the fingerprint index
-tests/                    11 suites, 1,500+ cases (incl. jsdom UI suite)
+tests/                    12 suites, 1,537 cases (incl. jsdom UI suite)
 instrumentation.ts        warms the fingerprint index at server boot
 ```
 
