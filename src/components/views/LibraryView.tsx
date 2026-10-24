@@ -10,6 +10,8 @@ interface LibraryResponse {
   recent: string[];
   likedTracks: Track[];
   recentTracks: Track[];
+  /** Songs imported from the web (mp3juice.sc / wider web) and saved locally. */
+  webTracks?: Track[];
   playlists: Playlist[];
 }
 
@@ -154,6 +156,24 @@ export function LibraryView({ onOpenPlaylist }: { onOpenPlaylist: (id: string) =
           )}
         </section>
       </div>
+
+      <section className="section">
+        <div className="section-head">
+          <h2 className="section-title">From the web</h2>
+          <span className="section-hint">{(data.webTracks?.length ?? 0)} songs · source URLs kept</span>
+        </div>
+        {data.webTracks?.length ? (
+          <div className="row-list">
+            {data.webTracks.slice(0, 10).map((track, index) => (
+              <TrackRow key={track.id} track={track} index={index} queue={data.webTracks} source="online" />
+            ))}
+          </div>
+        ) : (
+          <EmptyState>
+            Search <strong>Web Music</strong> and play or add a song — it is saved here with its real title and URL.
+          </EmptyState>
+        )}
+      </section>
 
       <section className="section">
         <div className="section-head">

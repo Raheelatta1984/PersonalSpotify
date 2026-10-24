@@ -8,6 +8,7 @@ import { TRACKS, getTrack } from "../catalog/tracks";
 import { readJson, writeJson } from "../storage";
 import { hashString, uid } from "../util";
 import { similarTracks } from "../ai/search";
+import { filterPlayableIds, isPlayableId } from "../online/weblibrary";
 
 const PLAYLISTS_FILE = "playlists.json";
 const LIBRARY_FILE = "library.json";
@@ -28,7 +29,8 @@ export async function getLibrary(): Promise<LibraryState> {
 }
 
 export async function toggleLike(trackId: string): Promise<{ liked: boolean; library: LibraryState }> {
-  if (!getTrack(trackId)) throw new Error(`Unknown track: ${trackId}`);
+  // Catalog tracks and songs imported from the web can both be liked.
+  if (!(await isPlayableId(trackId))) throw new Error(`Unknown track: ${trackId}`);
   const library = await getLibrary();
   const index = library.liked.indexOf(trackId);
   if (index >= 0) library.liked.splice(index, 1);
@@ -91,7 +93,7 @@ export async function createPlaylist(input: CreatePlaylistInput): Promise<Playli
     id: uid("pl"),
     name: input.name.trim() || "Untitled playlist",
     description: input.description?.trim() || "Made in SongHub",
-    trackIds: input.trackIds.filter((id) => Boolean(getTrack(id))),
+    trackIds: await filterPlayableIds(input.trackIds),
     owner: "you",
     createdAt: now,
     updatedAt: now,
@@ -111,12 +113,37 @@ export async function updatePlaylist(id: string, patch: Partial<Pick<Playlist, "
   const next: Playlist = {
     ...current,
     ...patch,
-    trackIds: (patch.trackIds ?? current.trackIds).filter((tid) => Boolean(getTrack(tid))),
+    trackIds: await filterPlayableIds(patch.trackIds ?? current.trackIds),
     updatedAt: new Date().toISOString(),
   };
   playlists[index] = next;
   await writeJson(PLAYLISTS_FILE, playlists);
   return next;
+}
+
+/**
+ * Append one track to a playlist (catalog id or saved `web_…` id).
+ * Used by the web-music panel so "add to playlist" is a single round-trip that
+ * keeps the real title and the song URL.
+ */
+export async function addTrackToPlaylist(
+  playlistId: string,
+  trackId: string,
+): Promise<{ playlist: Playlist; added: boolean } | null> {
+  const playlists = await getPlaylists();
+  const index = playlists.findIndex((p) => p.id === playlistId);
+  if (index < 0) return null;
+  const current = playlists[index];
+  if (!(await isPlayableId(trackId))) return null;
+  if (current.trackIds.includes(trackId)) return { playlist: current, added: false };
+  const next: Playlist = {
+    ...current,
+    trackIds: [...current.trackIds, trackId],
+    updatedAt: new Date().toISOString(),
+  };
+  playlists[index] = next;
+  await writeJson(PLAYLISTS_FILE, playlists);
+  return { playlist: next, added: true };
 }
 
 export async function deletePlaylist(id: string): Promise<boolean> {
@@ -174,7 +201,11 @@ export async function ensureSeedPlaylists(): Promise<Playlist[]> {
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export function summariseAnalytics(events: PlayEvent[], library: LibraryState): AnalyticsSummary {
+export function summariseAnalytics(
+  events: PlayEvent[],
+  library: LibraryState,
+  extraTracks?: Map<string, Track>,
+): AnalyticsSummary {
   const trackPlays = new Map<string, number>();
   const artistPlays = new Map<string, number>();
   const genrePlays = new Map<string, number>();
@@ -185,7 +216,7 @@ export function summariseAnalytics(events: PlayEvent[], library: LibraryState): 
   let totalMs = 0;
 
   for (const event of events) {
-    const track = getTrack(event.trackId);
+    const track = getTrack(event.trackId) ?? extraTracks?.get(event.trackId);
     if (!track) continue;
     trackPlays.set(track.id, (trackPlays.get(track.id) ?? 0) + 1);
     artistPlays.set(track.artist, (artistPlays.get(track.artist) ?? 0) + 1);

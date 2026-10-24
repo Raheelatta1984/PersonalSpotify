@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createPlaylist, ensureSeedPlaylists } from "@/lib/store/library";
-import { getTrack } from "@/lib/catalog/tracks";
+import { filterPlayableIds } from "@/lib/online/weblibrary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Body must be JSON" }, { status: 400 });
   }
   if (!body.name || !body.name.trim()) return NextResponse.json({ error: "name is required" }, { status: 400 });
-  const trackIds = (body.trackIds ?? []).filter((id) => Boolean(getTrack(id)));
+  const trackIds = await filterPlayableIds(body.trackIds ?? []);
   const playlist = await createPlaylist({
     name: body.name,
     description: body.description,

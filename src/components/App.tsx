@@ -9,16 +9,18 @@ import { HomeView } from "./views/HomeView";
 import { SearchView } from "./views/SearchView";
 import { IdentifyView } from "./views/IdentifyView";
 import { OnlineView } from "./views/OnlineView";
+import { WebMusicView } from "./views/WebMusicView";
 import { LibraryView } from "./views/LibraryView";
 import { AnalyticsView } from "./views/AnalyticsView";
 import { PlaylistView } from "./views/PlaylistView";
 
-type View = "home" | "search" | "identify" | "online" | "library" | "analytics" | "playlist";
+type View = "home" | "search" | "identify" | "online" | "web" | "library" | "analytics" | "playlist";
 
 const NAV: { id: View; label: string; icon: string; badge?: string }[] = [
   { id: "home", label: "Home", icon: "⌂" },
   { id: "search", label: "AI Search", icon: "✦", badge: "AI" },
   { id: "identify", label: "Identify", icon: "◎", badge: "mic" },
+  { id: "web", label: "Web Music", icon: "♫", badge: "mp3juice" },
   { id: "online", label: "Web & Browser", icon: "⇗" },
   { id: "library", label: "Library", icon: "♫" },
   { id: "analytics", label: "Analytics", icon: "▤" },
@@ -38,14 +40,24 @@ export function App() {
     } catch {
       /* offline */
     }
+    // web songs are playable tracks too: keep the client index in sync so
+    // playlist cards and rows can resolve `web_…` ids.
+    try {
+      const res = await fetch("/api/web/tracks");
+      const data = (await res.json()) as { tracks: Track[] };
+      for (const track of data.tracks ?? []) trackIndex.set(track.id, track);
+    } catch {
+      /* offline */
+    }
   }, []);
 
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/catalog");
-        const data = (await res.json()) as { tracks: Track[]; playlists: Playlist[] };
+        const data = (await res.json()) as { tracks: Track[]; webTracks?: Track[]; playlists: Playlist[] };
         for (const track of data.tracks) trackIndex.set(track.id, track);
+        for (const track of data.webTracks ?? []) trackIndex.set(track.id, track);
         setPlaylists(data.playlists);
       } catch {
         /* offline */
@@ -129,6 +141,7 @@ export function App() {
         {view === "search" ? <SearchView /> : null}
         {view === "identify" ? <IdentifyView /> : null}
         {view === "online" ? <OnlineView /> : null}
+        {view === "web" ? <WebMusicView /> : null}
         {view === "library" ? <LibraryView onOpenPlaylist={openPlaylist} /> : null}
         {view === "analytics" ? <AnalyticsView /> : null}
         {view === "playlist" && playlistId ? <PlaylistView playlistId={playlistId} onBack={() => setView("library")} /> : null}

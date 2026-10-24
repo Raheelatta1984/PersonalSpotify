@@ -22,6 +22,8 @@ export async function GET() {
       inAppBrowser: true,
       tempDownloads: true,
       analytics: true,
+      webMusic: true,
+      webPlaylists: true,
     },
   });
 }

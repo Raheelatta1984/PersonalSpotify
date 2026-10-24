@@ -92,6 +92,20 @@ export interface Track {
   spec: TrackSpec;
   /** Pre-computed popularity 0..100, used as a ranking prior. */
   popularity: number;
+  /**
+   * Present when the track was imported from the open web instead of the
+   * built-in synth catalog. Keeps the original song URL attached to the
+   * playlist entry so "add to playlist" never loses where it came from.
+   */
+  web?: {
+    id: string;
+    sourceUrl: string;
+    provider: string;
+    providerLabel: string;
+    playbackKind: PlaybackKind;
+    license: string;
+    artworkUrl?: string;
+  };
 }
 
 export interface Playlist {
@@ -198,6 +212,73 @@ export interface IdentifyResult {
   confidence: number;
   message: string;
   tookMs: number;
+}
+
+/* --------------------------------------------------- web music search ---- */
+
+/**
+ * How a web result can actually be played inside SongHub.
+ *   • full      — the source exposes a complete, openly licensed audio file
+ *   • preview   — an officially licensed short preview (e.g. Apple/iTunes 30 s)
+ *   • generated — no lawful audio found, so SongHub synthesises a short preview
+ */
+export type PlaybackKind = "full" | "preview" | "generated";
+
+/** A song discovered on the open web and persisted so playlists can keep it. */
+export interface WebTrack {
+  /** Stable id, `web_<hash>`; playable through `/api/stream/<id>`. */
+  id: string;
+  /** The real song title, as published by the source. */
+  title: string;
+  artist: string;
+  album?: string;
+  artworkUrl?: string;
+  durationSec?: number;
+  /** The actual song page URL on the source site (saved with the playlist entry). */
+  sourceUrl: string;
+  /** Direct, lawfully playable audio URL when the resolver found one. */
+  audioUrl?: string;
+  /** Where the metadata was found: mp3juice, google, duckduckgo, itunes, archive… */
+  provider: string;
+  providerLabel: string;
+  /** Which kind of audio `/api/stream/<id>` will serve. */
+  playbackKind: PlaybackKind;
+  license: string;
+  palette: [string, string];
+  notes?: string;
+  addedAt: string;
+  resolvedAt?: string;
+}
+
+/** One result row returned by `/api/web/search` (before it is saved). */
+export interface WebSearchHit {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  durationSec?: number;
+  artworkUrl?: string;
+  /** The song's page on the source site. */
+  sourceUrl: string;
+  provider: string;
+  providerLabel: string;
+  confidence: number;
+  notes?: string;
+  /** Already-known lawful audio for this result, if the provider supplied one. */
+  audioUrl?: string;
+  playbackKind?: PlaybackKind;
+}
+
+export interface WebSearchOutcome {
+  query: string;
+  hits: WebSearchHit[];
+  providers: { provider: string; ok: boolean; count: number; error?: string; tookMs: number }[];
+  /** True when at least one provider answered over the network. */
+  live: boolean;
+  /** True when the mp3juice.sc search had to fall back to the wider web. */
+  fallbackUsed: boolean;
+  tookMs: number;
+  notice?: string;
 }
 
 export interface OnlineResult {

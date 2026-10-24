@@ -106,6 +106,81 @@ function installFetchMock() {
     }
 
     if (path === "/api/events") return new Response(JSON.stringify({ ok: true }), { status: 201 });
+    if (path === "/api/web/tracks") {
+      return new Response(JSON.stringify({ webTracks: [], tracks: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (path === "/api/web/search") {
+      return new Response(
+        JSON.stringify({
+          query: "get lucky",
+          hits: [
+            {
+              id: "mp3juice:test",
+              title: "Get Lucky",
+              artist: "Daft Punk",
+              album: "Random Access Memories",
+              durationSec: 248,
+              sourceUrl: "https://mp3juice.sc/download?id=gl",
+              provider: "mp3juice",
+              providerLabel: "mp3juice.sc",
+              confidence: 0.9,
+              notes: "Found on mp3juice.sc",
+            },
+          ],
+          providers: [{ provider: "mp3juice", ok: true, count: 1, tookMs: 4 }],
+          live: true,
+          fallbackUsed: false,
+          tookMs: 6,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (path === "/api/web/play") {
+      return new Response(
+        JSON.stringify({
+          webTrack: {
+            id: "web_test",
+            title: "Get Lucky",
+            artist: "Daft Punk",
+            sourceUrl: "https://mp3juice.sc/download?id=gl",
+            provider: "mp3juice",
+            providerLabel: "mp3juice.sc",
+            playbackKind: "preview",
+            license: "Apple/iTunes licensed 30-second preview",
+            palette: ["#59d4b5", "#123f3a"],
+            addedAt: new Date().toISOString(),
+          },
+          track: { ...TRACKS[0], id: "web_test", title: "Get Lucky", artist: "Daft Punk", duration: 248 },
+          streamUrl: "/api/stream/web_test",
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (path.startsWith("/api/playlists/") && path.endsWith("/tracks")) {
+      return new Response(
+        JSON.stringify({
+          playlist: playlists[0],
+          added: true,
+          track: { ...TRACKS[0], id: "web_test", title: "Get Lucky", artist: "Daft Punk" },
+          savedTitle: "Get Lucky",
+          savedSourceUrl: "https://mp3juice.sc/download?id=gl",
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (path.startsWith("/api/playlists/") && path !== "/api/playlists") {
+      const id = path.split("/").pop();
+      const playlist = playlists.find((p) => p.id === id);
+      if (playlist) {
+        const tracks = playlist.trackIds
+          .map((trackId) => TRACKS.find((track) => track.id === trackId))
+          .filter((track): track is (typeof TRACKS)[number] => Boolean(track));
+        return new Response(JSON.stringify({ playlist, tracks }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+    }
     if (path === "/api/online/search") {
       return new Response(
         JSON.stringify({
@@ -242,7 +317,7 @@ describe("SongHub UI", () => {
   it("renders the shell with navigation", async () => {
     renderApp();
     expect(screen.getByText("SongHub")).toBeTruthy();
-    for (const label of ["Home", "AI Search", "Identify", "Web & Browser", "Library", "Analytics"]) {
+    for (const label of ["Home", "AI Search", "Identify", "Web Music", "Web & Browser", "Library", "Analytics"]) {
       expect(screen.getByText(label)).toBeTruthy();
     }
   });
@@ -342,6 +417,29 @@ describe("SongHub UI", () => {
     fireEvent.click(button);
     await waitFor(() => expect(screen.getByText("temporary")).toBeTruthy());
     expect(screen.getByText(/Delete now/)).toBeTruthy();
+  });
+
+  it("searches mp3juice and plays a web song inside the app", async () => {
+    renderApp();
+    fireEvent.click(screen.getByText("Web Music"));
+    const input = await screen.findByPlaceholderText(/Search every song/i);
+    fireEvent.change(input, { target: { value: "get lucky" } });
+    fireEvent.submit(input.closest("form")!);
+    await waitFor(() => expect(screen.getAllByText("Get Lucky").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByText("▶ Play"));
+    await waitFor(() => expect(screen.getByText(/Playing a licensed 30-second preview/i)).toBeTruthy());
+  });
+
+  it("adds a web result to a playlist with its title and URL", async () => {
+    renderApp();
+    fireEvent.click(screen.getByText("Web Music"));
+    const input = await screen.findByPlaceholderText(/Search every song/i);
+    fireEvent.change(input, { target: { value: "get lucky" } });
+    fireEvent.submit(input.closest("form")!);
+    await waitFor(() => expect(screen.getAllByText("Get Lucky").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByText("＋ Add to playlist"));
+    await waitFor(() => expect(screen.getByText(/saved with its song URL/i)).toBeTruthy());
+    expect(screen.getAllByText(/Get Lucky/).length).toBeGreaterThan(0);
   });
 
   it("renders the library view with playlists", async () => {

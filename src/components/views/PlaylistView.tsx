@@ -14,17 +14,16 @@ export function PlaylistView({ playlistId, onBack }: { playlistId: string; onBac
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [plRes, catRes] = await Promise.all([fetch("/api/playlists"), fetch("/api/catalog")]);
-      const plData = (await plRes.json()) as { playlists: Playlist[] };
-      const cat = (await catRes.json()) as { tracks: Track[] };
+      // The server hydrates catalog *and* saved web songs in playlist order.
+      const res = await fetch(`/api/playlists/${playlistId}`);
       if (!alive) return;
-      const found = plData.playlists.find((p) => p.id === playlistId);
-      if (!found) {
+      if (!res.ok) {
         setError("Playlist not found");
         return;
       }
-      setPlaylist(found);
-      setTracks(found.trackIds.map((id) => cat.tracks.find((t) => t.id === id)).filter((t): t is Track => Boolean(t)));
+      const data = (await res.json()) as { playlist: Playlist; tracks: Track[] };
+      setPlaylist(data.playlist);
+      setTracks(data.tracks);
     })();
     return () => {
       alive = false;
@@ -35,6 +34,7 @@ export function PlaylistView({ playlistId, onBack }: { playlistId: string; onBac
   if (!playlist) return <EmptyState><span className="spinner" /> Loading playlist…</EmptyState>;
 
   const total = tracks.reduce((sum, t) => sum + t.duration, 0);
+  const webImports = tracks.filter((track) => Boolean(track.web));
 
   return (
     <div>
@@ -76,6 +76,42 @@ export function PlaylistView({ playlistId, onBack }: { playlistId: string; onBac
           <TrackRow key={track.id} track={track} index={index} queue={tracks} source="playlist" />
         ))}
       </div>
+
+      {webImports.length ? (
+        <section className="section">
+          <div className="section-head">
+            <h2 className="section-title">Imported from the web</h2>
+            <span className="section-hint">the original song URL is stored with every entry</span>
+          </div>
+          <div className="stack" style={{ gap: 8 }}>
+            {webImports.map((track) => (
+              <div className="card" key={track.id} style={{ padding: "10px 14px" }}>
+                <div className="row-between" style={{ gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="row-title">{track.title}</div>
+                    <div className="row-sub">
+                      {track.artist} · {track.web?.providerLabel}
+                    </div>
+                  </div>
+                  <a
+                    className="btn small ghost"
+                    href={track.web?.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title={track.web?.sourceUrl}
+                    style={{ maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
+                    {track.web?.sourceUrl}
+                  </a>
+                </div>
+                <div className="dim" style={{ fontSize: 11.5, marginTop: 4 }}>
+                  {track.web?.license}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
