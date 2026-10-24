@@ -113,7 +113,9 @@ export function TrackRow({
       <div className="row-main">
         <div className="row-title">{track.title}</div>
         <div className="row-sub">
-          {track.artist} · {track.album} · {track.genres.join(", ")}
+          {track.artist} · {track.album}
+          {track.genres.length ? ` · ${track.genres.join(", ")}` : ""}
+          {track.web ? ` · ${track.web.providerLabel}` : ""}
           {reasons?.length ? ` — ${reasons[0]}` : ""}
         </div>
       </div>

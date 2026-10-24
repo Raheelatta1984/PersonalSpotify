@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { recordPlay, getEvents } from "@/lib/store/library";
-import { getTrack } from "@/lib/catalog/tracks";
+import { isPlayableId } from "@/lib/online/weblibrary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Body must be JSON" }, { status: 400 });
   }
   if (!body.trackId) return NextResponse.json({ error: "trackId is required" }, { status: 400 });
-  if (!getTrack(body.trackId)) return NextResponse.json({ error: "Unknown track" }, { status: 404 });
+  if (!(await isPlayableId(body.trackId))) return NextResponse.json({ error: "Unknown track" }, { status: 404 });
 
   const source = (SOURCES as readonly string[]).includes(body.source ?? "") ? (body.source as (typeof SOURCES)[number]) : "queue";
   const event = await recordPlay({

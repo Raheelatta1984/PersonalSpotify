@@ -27,6 +27,7 @@ Everything runs locally with **zero external services, zero audio files and zero
    - [1. AI-powered song search](#1-ai-powered-song-search)
    - [2. Hear it → identify it](#2-hear-it--identify-it)
    - [3. In-app browser → temporary download → play](#3-in-app-browser--temporary-download--play)
+   - [4. Web music → play → playlist](#4-web-music--play--playlist-mp3juicesc)
 4. [Architecture](#architecture)
 5. [How the audio works](#how-the-audio-works)
 6. [API reference](#api-reference)
@@ -45,6 +46,7 @@ Everything runs locally with **zero external services, zero audio files and zero
 | **AI search** | Type "warm lo-fi for a rainy drive, nothing with vocals, not too fast" and get ranked matches *plus* an explanation of what it understood. |
 | **Listen & identify** | Hold the mic (or upload a clip) and SongHub fingerprints it Shazam-style, matches it against the library in milliseconds and reports the offset. |
 | **Web + browser** | Search iTunes / Internet Archive / Jamendo, open results in an in-app browser, then download one to server temp storage and play it from that copy until the timer expires. |
+| **Web music** | Scrape every song result from **mp3juice.sc** (real titles, artists, durations, song URLs), play them inside the app, and save them into playlists with the title **and** source URL attached. Misses fall through to Google/DuckDuckGo/iTunes automatically. |
 | **Player** | Queue, shuffle, repeat, seek, volume, keyboard shortcuts, temp-file countdown. |
 | **Personal layer** | Likes, playlists, play events, taste profile, radio, analytics (hourly/weekday charts, streaks, top artists/genres/moods). |
 | **AI studio** | "Make me 40 minutes of focus music with no vocals" → a named, saved, explained playlist. |
@@ -61,6 +63,7 @@ Then open the app and try:
 
 * **AI Search** → `warm lo-fi for a rainy drive, nothing with vocals, not too fast`
 * **Identify** → tap the mic and play any SongHub track on another device (or upload a clip)
+* **Web Music** → search "get lucky", hit **▶ Play** (it plays in the app), then **＋ Add to playlist**
 * **Web & Browser** → search "neon", open a result, hit **⤓ Download & play**
 
 Useful scripts:
@@ -70,7 +73,7 @@ npm run dev        # dev server (0.0.0.0:3000)
 npm run build      # production build
 npm run start      # production server
 npm run typecheck  # tsc --noEmit
-npm run test       # 1,537 tests across 12 suites
+npm run test       # 1,601 tests across 13 suites
 npm run verify     # typecheck + tests
 npm run index:audio# pre-build the audio fingerprint index
 ```
@@ -81,10 +84,13 @@ Environment variables (all optional):
 | --- | --- | --- |
 | `SONGHUB_DATA_DIR` | `./.data` | Where runtime state (playlists, events, temp downloads, fingerprint cache) lives |
 | `JAMENDO_CLIENT_ID` | — | Enables the Jamendo provider; without it that source is skipped |
+| `MP3JUICE_BASE_URL` | `https://mp3juice.sc` | Which mirror/clone of the site the scraper queries |
+| `GOOGLE_API_KEY` | — | Google Programmable Search key; enables the Google fallback |
+| `GOOGLE_CSE_ID` | — | Google Programmable Search engine id (used with `GOOGLE_API_KEY`) |
 
 ---
 
-## The three headline features
+## The headline features
 
 ### 1. AI-powered song search
 
@@ -172,6 +178,46 @@ sentence: *"Here are 6 lo-fi tracks with a calm feel. Start with 'Rain on the Tr
 
 ---
 
+### 4. Web music → play → playlist (mp3juice.sc)
+
+```
+ query ──► scrape mp3juice.sc ──► rows? ──► yes ─┐
+                                   │ no          │
+                                   ▼             │
+                    Google CSE ─► DuckDuckGo ─► iTunes metadata
+                                   │             │
+                                   └──── hits ───┘
+                                                 ▼
+   ▶ Play  ──► /api/web/play ──► resolve lawful audio ──► save web_… + /api/stream/web_…
+   ＋ List ──► /api/playlists/:id/tracks { hit } ──► playlist keeps title + song URL
+```
+
+* **Scraping** (`src/lib/online/mp3juice.ts`) is multi-strategy on purpose — the site's clones
+  differ. Data-attribute rows (`data-songtitle`/`data-artist`/`data-duration`), embedded
+  Next.js/Nuxt JSON, table layouts and loose `/download` anchors are all parsed, then merged,
+  de-duplicated and ranked. Every row keeps the **song page URL** it was found on.
+* **Fallback** (`src/lib/online/web.ts`): if mp3juice.sc returns fewer than three rows the
+  search automatically continues on Google (when `GOOGLE_API_KEY` + `GOOGLE_CSE_ID` are set),
+  then DuckDuckGo, then the iTunes catalogue — labelled per row so you know where it came from.
+  Air-gapped runs fall back to the offline demo catalogue with a visible notice.
+* **Playback** (`src/lib/online/resolve.ts`) only ever uses audio the rights-holder publishes:
+  Apple's licensed 30-second previews, Internet Archive items that declare a licence, Jamendo
+  (CC), or a self-hosted/archive file. When no lawful recording exists SongHub synthesises a
+  deterministic 30-second preview of its own and says so. No stream-ripping, no YouTube
+  extraction, no DRM bypass.
+* **Saving** (`src/lib/online/weblibrary.ts`): playing or adding a web result persists a
+  `WebTrack` — real title, artist, album, duration, artwork, **source URL**, resolved audio URL,
+  licence and playback kind — in `.data/web-tracks.json`. Playlists store the `web_…` id, and
+  the same id renders, queues and streams like a catalog track, so the entry survives restarts
+  with its title and URL intact.
+* **Streaming** (`src/lib/online/webstream.ts`): `/api/stream/web_…` downloads the lawful audio
+  once into `.data/web-audio/`, serves it with `Range` support (seeking works), and falls back to
+  the synth preview if the source disappears. Headers `X-Playback-Kind` / `X-Audio-Cached` tell
+  the UI exactly what is playing.
+* **UI** adds a **Web Music** view: search, ▶ Play, ＋ Add to playlist (existing or new), open the
+  original page, and a "Saved from the web" list. Playlists and the Library show the stored
+  source URL next to every web import.
+
 ## Architecture
 
 ```
@@ -245,8 +291,12 @@ Rendering speed is ~140× realtime at 8 kHz, ~50× at 22.05 kHz.
 | `GET/DELETE` | `/api/temp/:token` | Stream (Range) / delete a temporary download |
 | `GET` | `/api/library` | Likes, recents, playlists |
 | `POST` | `/api/library` | `{action:"toggle-like", trackId}` |
+| `GET/POST` | `/api/web/search` | Scrape mp3juice.sc (`?q=`) then fall back to the wider web |
+| `POST` | `/api/web/play` | Save a hit (real title + URL), resolve lawful audio → playable track |
+| `GET/DELETE` | `/api/web/tracks` | List / forget saved web songs (+ cached audio) |
 | `GET/POST` | `/api/playlists` | List / create playlists |
-| `PATCH/DELETE` | `/api/playlists/:id` | Rename, retrack, delete |
+| `GET/PATCH/DELETE` | `/api/playlists/:id` | Hydrated playlist (catalog + web tracks) · rename · delete |
+| `POST` | `/api/playlists/:id/tracks` | Append a track or a `{ hit }` — saves title + song URL |
 | `GET/POST` | `/api/events` | Play-event stream (powers analytics) |
 | `GET` | `/api/analytics` | Aggregated listening stats + taste |
 | `GET` | `/api/recommendations` | Radio + "made for you" rows (`?seed=&limit=`) |
@@ -255,7 +305,7 @@ Rendering speed is ~140× realtime at 8 kHz, ~50× at 22.05 kHz.
 ## Testing
 
 ```bash
-npm test          # 1,537 cases, ~75 s
+npm test          # 1,601 cases, ~110 s
 npm run verify    # typecheck + tests
 ```
 
@@ -318,11 +368,11 @@ src/
     catalog/tracks.ts     24 generated tracks + 12 artists
     audio/                synth · wav · fingerprint · stream · identify · tempo
     ai/                   text · embed · index (BM25) · understand · search
-    online/               sources (providers + browser) · downloads (TTL cache)
+    online/               sources · downloads · mp3juice · web · resolve · weblibrary · webstream
     store/                library, playlists, events, analytics, radio
     client/               browser-side mic capture + PCM decode
 scripts/build-index.ts    pre-build the fingerprint index
-tests/                    12 suites, 1,537 cases (incl. jsdom UI suite)
+tests/                    13 suites, 1,601 cases (incl. jsdom UI suite)
 instrumentation.ts        warms the fingerprint index at server boot
 ```
 

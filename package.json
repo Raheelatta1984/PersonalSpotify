@@ -13,7 +13,8 @@
     "index:audio": "tsx scripts/build-index.ts",
     "verify": "npm run typecheck && npm run test",
     "test:audio": "vitest run tests/audio-synth.test.ts tests/fingerprint.test.ts tests/identify.test.ts",
-    "test:ui": "vitest run tests/ui"
+    "test:ui": "vitest run tests/ui",
+    "test:web": "vitest run tests/web-music.test.ts"
   },
   "dependencies": {
     "next": "16.4.3",
