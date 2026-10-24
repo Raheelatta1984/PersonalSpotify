@@ -295,11 +295,21 @@ describe("/api/online", () => {
     expect(res.status).toBe(400);
   });
 
-  it("renders a result page in the in-app browser", async () => {
+  it("renders a demo result page in the in-app browser", async () => {
     const first = offlineResults("road", 1)[0];
     const body = await (await browsePOST(json({ resultId: first.id, query: "road" }))).json();
     expect(body.blocks.length).toBeGreaterThan(0);
     expect(body.url.length).toBeGreaterThan(0);
+    expect(body.fetchedLive).toBe(false);
+  }, 30000);
+
+  it("renders whichever result the search returned (live or offline)", async () => {
+    const search = await (await onlineSearchPOST(json({ query: "neon overpass", limit: 2 }))).json();
+    expect(search.results.length).toBeGreaterThan(0);
+    const body = await (await browsePOST(json({ resultId: search.results[0].id, query: "neon overpass" }))).json();
+    expect(Array.isArray(body.blocks)).toBe(true);
+    expect(body.blocks.length).toBeGreaterThan(0);
+    expect(body.title.length).toBeGreaterThan(0);
   }, 30000);
 
   it("rejects browsing a non-http URL", async () => {
