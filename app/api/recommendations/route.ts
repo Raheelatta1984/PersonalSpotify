@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildRadio, getEvents, getLibrary, tasteProfileFrom } from "@/lib/store/library";
-import { TRACKS } from "@/lib/catalog/tracks";
+import { TRACKS, BOLLYWOOD_TRACKS } from "@/lib/catalog/tracks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +21,11 @@ export async function GET(request: Request) {
     taste,
     recentlyPlayed,
     rows: [
+      // Hindi film music gets a permanent shelf so it is never "missing".
+      {
+        title: "Bollywood & filmi",
+        tracks: [...BOLLYWOOD_TRACKS].sort((a, b) => b.popularity - a.popularity).slice(0, 8),
+      },
       { title: "Made for you", tracks: tracks.slice(0, 8) },
       { title: "Because you like " + (taste.genres[0] ?? "everything"), tracks: TRACKS.filter((t) => t.genres.includes((taste.genres[0] ?? "electronic") as never)).slice(0, 8) },
       { title: "Fresh in your library", tracks: recentlyPlayed },

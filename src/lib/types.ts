@@ -16,7 +16,11 @@ export type Genre =
   | "classical"
   | "pop"
   | "rock"
-  | "house";
+  | "house"
+  /** Hindi film music: the SongHub "Bollywood & filmi" collection. */
+  | "bollywood"
+  /** Sufi / ghazal / qawwali-flavoured filmi material. */
+  | "sufi";
 
 export type Mood =
   | "calm"
@@ -48,6 +52,11 @@ export interface TrackSpec {
     drums: boolean;
     pluck: boolean;
     shimmer: boolean;
+    /** Filmi additions (optional so older specs stay valid). */
+    tabla?: boolean;
+    sitar?: boolean;
+    flute?: boolean;
+    strings?: boolean;
   };
   /** 0..1 swing amount on the 16th grid. */
   swing: number;
@@ -70,6 +79,10 @@ export interface Artist {
 export interface Track {
   id: string;
   title: string;
+  /** Title in its own script (Devanagari for the Bollywood collection). */
+  nativeTitle?: string;
+  /** ISO-ish language tag of the original song, e.g. "hi". */
+  language?: string;
   artistId: string;
   artist: string;
   album: string;

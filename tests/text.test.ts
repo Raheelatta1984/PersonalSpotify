@@ -41,7 +41,8 @@ describe("tokenize", () => {
     expect(tokenize("lo-fi")).toEqual(["lo-fi"]);
   });
   it("handles unicode accents gracefully", () => {
-    expect(tokenize("Ólafur Arnalds")).toEqual(["lafur", "arnald"]);
+    // accents are folded to their base letter instead of dropped
+    expect(tokenize("Ólafur Arnalds")).toEqual(["olafur", "arnald"]);
   });
   it("handles numbers", () => {
     expect(tokenize("80s synth 128 bpm")).toEqual(["80s", "synth", "128", "bpm"]);

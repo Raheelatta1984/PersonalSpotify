@@ -25,6 +25,15 @@ function installFetchMock() {
     "/api/catalog": {
       tracks: TRACKS,
       artists: [],
+      collections: [
+        {
+          id: "col_bollywood-romance",
+          title: "Bollywood romance",
+          subtitle: "Rain, letters, and the long way home",
+          accent: "#ff8a3d",
+          trackIds: TRACKS.filter((track) => track.genres.includes("bollywood")).slice(0, 4).map((track) => track.id),
+        },
+      ],
       playlists,
       library: { liked: [], recent: [], plays: {} },
       taste: { genres: [], moods: [], artistIds: [] },
@@ -511,5 +520,89 @@ describe("SongHub UI", () => {
     fireEvent.click(screen.getAllByLabelText(/^Play /)[0]);
     // queue button should now show a count > 0
     await waitFor(() => expect(screen.queryByText(/Nothing playing yet/i)).toBeNull());
+  });
+});
+
+describe("SongHub quality ladder & Bollywood shelf (UI)", () => {
+  beforeEach(() => {
+    installFetchMock();
+    vi.stubGlobal("Audio", FakeAudio as unknown as typeof Audio);
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it("shows the Bollywood shelf in the navigation", async () => {
+    renderApp();
+    expect(screen.getByText("Bollywood")).toBeTruthy();
+  });
+
+  it("renders the filmi shelf with Hindi titles", async () => {
+    renderApp();
+    fireEvent.click(screen.getByText("Bollywood"));
+    await waitFor(() => expect(screen.getByText(/Bollywood & filmi/)).toBeTruthy());
+    const hindi = TRACKS.filter((track) => track.nativeTitle);
+    expect(hindi.length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByText(new RegExp(hindi[0].nativeTitle!.slice(0, 4))).length).toBeGreaterThan(0));
+  });
+
+  it("offers scene filters on the shelf", async () => {
+    renderApp();
+    fireEvent.click(screen.getByText("Bollywood"));
+    for (const label of ["Romance", "Sangeet & dance", "Sufi & ghazal"]) {
+      await waitFor(() => expect(screen.getByText(label)).toBeTruthy());
+    }
+  });
+
+  it("exposes playback quality in the player bar", async () => {
+    renderApp();
+    const select = screen.getByLabelText("Playback quality") as HTMLSelectElement;
+    expect(select.value).toBe("mp3-128");
+    // every rung is offered, from 32 kbps to 24-bit WAV
+    const values = Array.from(select.options).map((option) => option.value);
+    expect(values).toContain("mp3-32");
+    expect(values).toContain("mp3-320");
+    expect(values).toContain("wav-48-24");
+  });
+
+  it("switches quality, remembers it, and reports the change", async () => {
+    renderApp();
+    const select = screen.getByLabelText("Playback quality") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "mp3-64" } });
+    await waitFor(() => expect((screen.getByLabelText("Playback quality") as HTMLSelectElement).value).toBe("mp3-64"));
+    expect(window.localStorage.getItem("songhub.quality")).toBe("mp3-64");
+    // the data-saver rungs are advertised in the picker itself
+    expect(screen.getAllByText(/data saver/i).length).toBeGreaterThan(1);
+  });
+
+  it("opens the download studio from the player bar", async () => {
+    renderApp();
+    fireEvent.click(screen.getByLabelText("Quality and downloads"));
+    await waitFor(() => expect(screen.getByText(/Quality & downloads/i)).toBeTruthy());
+    expect(screen.getByText("MP3 · 32 kbps")).toBeTruthy();
+    expect(screen.getByText("WAV · 48 kHz 24-bit")).toBeTruthy();
+  });
+
+  it("lists MP4 resolutions up to 8K, or explains why it cannot", async () => {
+    renderApp();
+    fireEvent.click(screen.getByLabelText("Quality and downloads"));
+    await waitFor(() => expect(screen.getByText(/Quality & downloads/i)).toBeTruthy());
+    // jsdom has no WebCodecs, so the honest fallback message must appear
+    await waitFor(() => expect(screen.getAllByText(/WebCodecs|MP4/i).length).toBeGreaterThan(0));
+  });
+
+  it("keeps quality reachable while a song is playing", async () => {
+    renderApp();
+    await waitFor(() => expect(screen.getAllByLabelText(/^Play /).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByLabelText(/^Play /)[0]);
+    const select = screen.getByLabelText("Playback quality") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "mp3-320" } });
+    await waitFor(() => expect(screen.queryByText(/Nothing playing yet/i)).toBeNull());
+    expect((screen.getByLabelText("Playback quality") as HTMLSelectElement).value).toBe("mp3-320");
   });
 });

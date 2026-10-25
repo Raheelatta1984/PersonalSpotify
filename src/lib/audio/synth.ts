@@ -230,6 +230,74 @@ export function sampleAt(spec: TrackSpec, t: number): number {
     }
   }
 
+  // ---- tabla / dholak (16th-note theka) --------------------------------
+  if (v.tabla) {
+    const sixteenth = g.secPerBeat / 4;
+    const slot = Math.floor(t / sixteenth);
+    const local = t - slot * sixteenth;
+    // Teentaal-ish theka: dha · na · tin · na · dha dha tin · na · dhin
+    const THEKA = [1, 0, 2, 0, 3, 0, 2, 0, 1, 1, 3, 0, 2, 0, 4, 0];
+    const stroke = THEKA[((slot % 16) + 16) % 16];
+    if (stroke) {
+      const accent = stroke === 1 ? 1 : stroke === 4 ? 0.92 : 0.72;
+      const decay = stroke === 1 ? 0.17 : stroke === 3 ? 0.085 : 0.12;
+      const env = expDecay(local, decay) * adsr(local, sixteenth * 0.95, 0.002, 0.02);
+      // bayan (bass drum) glides down after the strike; dayan (rim) sits higher
+      const base = stroke === 1 ? 94 : stroke === 4 ? 84 : 176;
+      const pitch = base * (1 + 0.85 * fastExpNeg(local / 0.022));
+      out += 0.155 * accent * env * osc(pitch * t);
+      // skin/rim crack
+      const n = noiseAt(Math.floor(t * 20000), spec.seed + 71);
+      out += 0.05 * accent * env * n;
+      // metallic ring of the dayan
+      if (stroke !== 1) out += 0.018 * env * osc(412 * t) * (0.5 + 0.5 * osc(3.1 * t));
+    }
+  }
+
+  // ---- sitar (plucked, with meend glide) -------------------------------
+  if (v.sitar) {
+    const eighth = g.secPerBeat / 2;
+    const slot = Math.floor(t / eighth);
+    const local = t - slot * eighth;
+    const degree = melodyDegree(spec, g.bar, slot % 8) + (slot % 4 === 3 ? 1 : 0);
+    const target = midiToHz(spec.root + 24 + degreeToSemitone(spec.scale, degree));
+    const glide = 1 + 0.055 * fastExpNeg(local / 0.035); // bend into the note
+    const f = target * glide;
+    const env = expDecay(local, 0.55) * adsr(local, eighth * 1.6, 0.004, 0.08);
+    out +=
+      0.062 *
+      env *
+      (osc(f * t) + 0.45 * osc(2.01 * f * t) + 0.22 * osc(3.02 * f * t) + 0.09 * osc(4.98 * f * t));
+    // sympathetic strings blooming after the pluck
+    out += 0.012 * expDecay(local, 1.1) * osc(target * 2.005 * t);
+  }
+
+  // ---- bansuri / flute lead -------------------------------------------
+  if (v.flute) {
+    const half = g.secPerBar / 2;
+    const slot = Math.floor(t / half);
+    const local = t - slot * half;
+    const degree = melodyDegree(spec, g.bar, slot % 4) + (g.bar % 2 ? 2 : 0);
+    const f = midiToHz(spec.root + 24 + degreeToSemitone(spec.scale, degree));
+    const vibrato = 1 + 0.0065 * osc(t * 5.2);
+    const env = adsr(local, half * 0.86, 0.16, 0.3);
+    out += 0.06 * env * (osc(f * vibrato * t) + 0.18 * osc(2 * f * t) + 0.05 * osc(3 * f * t));
+    // breath noise rides the phrase
+    const breath = noiseAt(Math.floor(t * 12000), spec.seed + 43);
+    out += 0.011 * env * breath * (0.6 + 0.4 * osc(t * 3.3));
+  }
+
+  // ---- string section (filmi orchestra swell) -------------------------
+  if (v.strings) {
+    const barTime = t - g.bar * g.secPerBar;
+    const swell = adsr(barTime, g.secPerBar * 0.99, 0.55, 0.5) * (0.62 + 0.38 * osc(t * 0.09));
+    const chord = [0, 1, 2].map((k) => midiToHz(spec.root + 12 + chordTone(spec, g.bar, k)));
+    for (let k = 0; k < 3; k++) {
+      const f = chord[k] * (1 + 0.002 * osc(t * 5.5 + k));
+      out += 0.028 * swell * (0.5 * tri(f * t) + 0.5 * osc(f * t) + 0.22 * osc(2 * f * t));
+    }
+  }
+
   // ---- master trim + gentle saturation --------------------------------
   const saturated = softClip(out * spec.gain * 1.35) * 0.92;
   // global fade in/out to avoid clicks

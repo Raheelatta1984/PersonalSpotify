@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Track } from "@/lib/types";
+import { DEFAULT_QUALITY, resolveQuality } from "@/lib/audio/quality";
 
 export interface NowPlaying {
   /** Track id when the source is the local catalog. */
@@ -15,6 +16,8 @@ export interface NowPlaying {
   tempToken?: string;
   expiresAt?: string;
   origin: "catalog" | "temp";
+  /** Quality rung requested from `/api/stream` (catalog tracks only). */
+  quality?: string;
 }
 
 interface Toast {
@@ -32,6 +35,8 @@ interface PlayerContextValue {
   muted: boolean;
   shuffle: boolean;
   repeat: "off" | "one" | "all";
+  /** Playback rung for synthesised tracks (see `src/lib/audio/quality.ts`). */
+  quality: string;
   queue: NowPlaying[];
   queueOpen: boolean;
   toasts: Toast[];
@@ -46,6 +51,7 @@ interface PlayerContextValue {
   toggleMute: () => void;
   toggleShuffle: () => void;
   cycleRepeat: () => void;
+  setQuality: (qualityId: string) => void;
   enqueue: (track: Track) => void;
   clearQueue: () => void;
   setQueueOpen: (open: boolean) => void;
@@ -61,15 +67,21 @@ export function usePlayer(): PlayerContextValue {
   return ctx;
 }
 
-export function nowPlayingFromTrack(track: Track): NowPlaying {
+/** Stream URL for a catalog track at a given quality rung. */
+export function streamSrcFor(trackId: string, qualityId?: string): string {
+  return qualityId ? `/api/stream/${trackId}?q=${encodeURIComponent(qualityId)}` : `/api/stream/${trackId}`;
+}
+
+export function nowPlayingFromTrack(track: Track, qualityId?: string): NowPlaying {
   return {
     id: track.id,
     title: track.title,
     artist: track.artist,
     album: track.album,
     palette: track.palette,
-    src: `/api/stream/${track.id}`,
+    src: streamSrcFor(track.id, qualityId),
     origin: "catalog",
+    quality: qualityId,
   };
 }
 
@@ -85,10 +97,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [muted, setMuted] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<"off" | "one" | "all">("all");
+  const [quality, setQualityState] = useState<string>(DEFAULT_QUALITY);
   const [queue, setQueue] = useState<NowPlaying[]>([]);
   const [queueOpen, setQueueOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const sourceRef = useRef<string>("home");
+  const qualityRef = useRef<string>(quality);
+  qualityRef.current = quality;
+
+  // Restore the rung the listener picked last time.
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("songhub.quality");
+      const resolved = resolveQuality(stored);
+      if (resolved) setQualityState(resolved.id);
+    } catch {
+      /* private mode / storage disabled */
+    }
+  }, []);
 
   const toast = useCallback((message: string, tone: Toast["tone"] = "info") => {
     const id = Date.now() + Math.random();
@@ -249,9 +275,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     (track: Track, list?: Track[], source = "home") => {
       sourceRef.current = source;
       const items = list && list.length ? list : [track];
-      const mapped = items.map(nowPlayingFromTrack);
+      const mapped = items.map((t) => nowPlayingFromTrack(t, qualityRef.current));
       setQueue(mapped);
-      const item = mapped.find((i) => i.id === track.id) ?? nowPlayingFromTrack(track);
+      const item = mapped.find((i) => i.id === track.id) ?? nowPlayingFromTrack(track, qualityRef.current);
       load(item, true);
     },
     [load],
@@ -306,9 +332,62 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const enqueue = useCallback(
     (track: Track) => {
-      const item = nowPlayingFromTrack(track);
+      const item = nowPlayingFromTrack(track, qualityRef.current);
       setQueue((prev) => (prev.some((p) => p.src === item.src) ? prev : [...prev, item]));
       toast(`Added “${track.title}” to the queue.`, "ok");
+    },
+    [toast],
+  );
+
+  /**
+   * Switch rung mid-song: rebuild the stream URL, keep the playhead, and resume
+   * if we were playing. The queue is rewritten too so "next" stays consistent.
+   */
+  const setQuality = useCallback(
+    (qualityId: string) => {
+      const next = resolveQuality(qualityId);
+      if (!next) return;
+      setQualityState(next.id);
+      qualityRef.current = next.id;
+      try {
+        window.localStorage.setItem("songhub.quality", next.id);
+      } catch {
+        /* storage disabled */
+      }
+
+      setQueue((prev) =>
+        prev.map((item) => (item.origin === "catalog" && item.id ? { ...item, src: streamSrcFor(item.id, next.id), quality: next.id } : item)),
+      );
+
+      const audio = audioRef.current;
+      const currentItem = currentRef.current;
+      if (!audio || !currentItem || currentItem.origin !== "catalog" || !currentItem.id) {
+        toast(`Audio quality set to ${next.label}.`, "ok");
+        return;
+      }
+
+      const at = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+      const wasPlaying = !audio.paused;
+      const updated: NowPlaying = { ...currentItem, src: streamSrcFor(currentItem.id, next.id), quality: next.id };
+      setCurrent(updated);
+      audio.src = updated.src;
+      audio.load();
+      audio.addEventListener(
+        "loadedmetadata",
+        () => {
+          try {
+            audio.currentTime = at;
+          } catch {
+            /* seeking not ready yet */
+          }
+          if (wasPlaying) void audio.play().catch(() => undefined);
+        },
+        { once: true },
+      );
+      toast(
+        `Quality ${next.label}${next.dataSaver ? " · data saver" : ""} — same song, ${next.sampleRate / 1000} kHz render.`,
+        "ok",
+      );
     },
     [toast],
   );
@@ -323,6 +402,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       muted,
       shuffle,
       repeat,
+      quality,
       queue,
       queueOpen,
       toasts,
@@ -337,13 +417,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       toggleMute,
       toggleShuffle: () => setShuffle((v) => !v),
       cycleRepeat: () => setRepeat((r) => (r === "off" ? "all" : r === "all" ? "one" : "off")),
+      setQuality,
       enqueue,
       clearQueue: () => setQueue(current ? [current] : []),
       setQueueOpen,
       removeFromQueue: (index: number) => setQueue((prev) => prev.filter((_, i) => i !== index)),
       toast,
     }),
-    [current, playing, time, duration, volume, muted, shuffle, repeat, queue, queueOpen, toasts, playTrack, playNowPlaying, playQueue, toggle, advance, seek, setVolume, toggleMute, enqueue, toast],
+    [current, playing, time, duration, volume, muted, shuffle, repeat, quality, queue, queueOpen, toasts, playTrack, playNowPlaying, playQueue, toggle, advance, seek, setVolume, toggleMute, setQuality, enqueue, toast],
   );
 
   // keyboard shortcuts

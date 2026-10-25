@@ -51,6 +51,11 @@ export const SYNONYMS: Record<string, string[]> = {
   fast: ["fast", "uptempo", "quick", "high tempo", "driving beat"],
   morning: ["morning", "sunrise", "breakfast", "wake up", "wakeup", "dawn"],
   evening: ["evening", "sunset", "dusk", "after work", "dinner"],
+  bollywood: [
+    "bollywood", "bwood", "hindi", "filmi", "film song", "film songs", "filmy", "indian", "desi",
+    "item song", "item number", "sangeet", "shaadi", "mehndi", "baraat", "hero heroine", "masala",
+  ],
+  sufi: ["sufi", "ghazal", "qawwali", "devotional", "ruhani", "mystic", "bhairavi", "raga"],
 };
 
 /** Reverse lookup: surface form -> canonical concepts. */
@@ -67,9 +72,14 @@ for (const [concept, forms] of Object.entries(SYNONYMS)) {
 export function normaliseToken(token: string): string {
   return token
     .toLowerCase()
+    // fold Latin accents ("Ólafur" -> "olafur") without touching Devanagari
+    // matras, which live outside the U+0300–U+036F combining block.
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[’']/g, "")
     .replace(/-/g, "-")
-    .replace(/[^a-z0-9\-]/g, "")
+    // `\p{L}` keeps Devanagari (and every other script) searchable, not just Latin.
+    .replace(/[^\p{L}\p{N}\-]/gu, "")
     .trim();
 }
 
@@ -77,8 +87,11 @@ export function tokenize(text: string, opts: { keepStopwords?: boolean } = {}): 
   if (!text) return [];
   const cleaned = text
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[’']/g, "")
-    .replace(/[^a-z0-9\-\s]/g, " ")
+    // keep letters/numbers from any script so Hindi titles are searchable
+    .replace(/[^\p{L}\p{N}\-\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
   const raw = cleaned.split(" ").filter(Boolean);

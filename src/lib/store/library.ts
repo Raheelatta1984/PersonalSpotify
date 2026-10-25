@@ -187,6 +187,25 @@ export const SEED_PLAYLISTS: CreatePlaylistInput[] = [
     trackIds: ["trk_golden_hour", "trk_summer_handwriting", "trk_velvet_morning", "trk_glass_aster", "trk_headlights_home"],
     palette: ["#f6d365", "#fda085"],
   },
+  {
+    name: "Bollywood Nights",
+    description: "Hindi filmi romance: bansuri, strings and monsoon rain.",
+    trackIds: [
+      "trk_baarish_ki_chaadar",
+      "trk_tere_naam_ki_roshni",
+      "trk_zara_thehro",
+      "trk_mausam_bawra",
+      "trk_chandni_bazaar",
+      "trk_ghar_wapsi",
+    ],
+    palette: ["#ff8a3d", "#4a1079"],
+  },
+  {
+    name: "Sangeet Night",
+    description: "Dhol, dholak and a dance floor full of cousins.",
+    trackIds: ["trk_pyaar_ka_shor", "trk_mehndi_raat", "trk_saanjh_dhale", "trk_dil_ka_raasta", "trk_sapno_ki_sawari"],
+    palette: ["#ff5c7a", "#7a1030"],
+  },
 ];
 
 export async function ensureSeedPlaylists(): Promise<Playlist[]> {

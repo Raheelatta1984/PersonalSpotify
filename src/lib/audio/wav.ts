@@ -2,9 +2,21 @@
 
 export const WAV_HEADER_BYTES = 44;
 
-export function encodeWav(samples: Float32Array, sampleRate: number, channels = 1): Uint8Array {
-  const bytesPerSample = 2;
-  const dataBytes = samples.length * bytesPerSample;
+export type WavBitDepth = 8 | 16 | 24;
+
+/**
+ * Encode mono/stereo PCM. `bitDepth` covers the three depths SongHub offers:
+ * 8-bit (byte-sized lo-fi recordings), 16-bit (CD) and 24-bit (studio master).
+ */
+export function encodeWav(
+  samples: Float32Array,
+  sampleRate: number,
+  channels = 1,
+  bitDepth: WavBitDepth = 16,
+): Uint8Array {
+  const bytesPerSample = bitDepth / 8;
+  const frames = Math.floor(samples.length / channels);
+  const dataBytes = frames * channels * bytesPerSample;
   const out = new Uint8Array(WAV_HEADER_BYTES + dataBytes);
   const view = new DataView(out.buffer);
 
@@ -18,22 +30,34 @@ export function encodeWav(samples: Float32Array, sampleRate: number, channels = 
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * channels * bytesPerSample, true); // byte rate
   view.setUint16(32, channels * bytesPerSample, true); // block align
-  view.setUint16(34, 16, true); // bits per sample
+  view.setUint16(34, bitDepth, true); // bits per sample
   writeAscii(view, 36, "data");
   view.setUint32(40, dataBytes, true);
 
   let offset = WAV_HEADER_BYTES;
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i] < -1 ? -1 : samples[i] > 1 ? 1 : samples[i];
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-    offset += 2;
+    if (bitDepth === 8) {
+      // 8-bit PCM is unsigned with 128 as silence.
+      view.setUint8(offset, Math.max(0, Math.min(255, Math.round(s * 127) + 128)));
+      offset += 1;
+    } else if (bitDepth === 24) {
+      const v = Math.max(-8388608, Math.min(8388607, Math.round(s < 0 ? s * 0x800000 : s * 0x7fffff)));
+      view.setUint8(offset, v & 0xff);
+      view.setUint8(offset + 1, (v >> 8) & 0xff);
+      view.setUint8(offset + 2, (v >> 16) & 0xff);
+      offset += 3;
+    } else {
+      view.setInt16(offset, Math.round(s < 0 ? s * 0x8000 : s * 0x7fff), true);
+      offset += 2;
+    }
   }
   return out;
 }
 
-/** Total byte length of a WAV file for `sampleCount` mono 16-bit samples. */
-export function wavByteLength(sampleCount: number, channels = 1): number {
-  return WAV_HEADER_BYTES + sampleCount * channels * 2;
+/** Total byte length of a WAV file for `sampleCount` mono samples. */
+export function wavByteLength(sampleCount: number, channels = 1, bitDepth: WavBitDepth = 16): number {
+  return WAV_HEADER_BYTES + Math.ceil((sampleCount * channels * bitDepth) / 8);
 }
 
 function writeAscii(view: DataView, offset: number, text: string) {

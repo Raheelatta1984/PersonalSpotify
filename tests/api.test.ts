@@ -17,8 +17,10 @@ import { DELETE as playlistDELETE, PATCH as playlistPATCH } from "../app/api/pla
 import { GET as eventsGET, POST as eventsPOST } from "../app/api/events/route";
 import { GET as analyticsGET } from "../app/api/analytics/route";
 import { GET as recommendationsGET } from "../app/api/recommendations/route";
+import { GET as qualitiesGET } from "../app/api/qualities/route";
+import { GET as downloadFileGET } from "../app/api/download/[id]/route";
 import { POST as aiPlaylistPOST } from "../app/api/ai/playlist/route";
-import { TRACKS } from "@/lib/catalog/tracks";
+import { TRACKS, BOLLYWOOD_TRACKS } from "@/lib/catalog/tracks";
 import { encodeWav } from "@/lib/audio/wav";
 import { renderRange } from "@/lib/audio/synth";
 import { offlineResults } from "@/lib/online/sources";
@@ -569,5 +571,139 @@ describe("/api/ai/playlist", () => {
     const body = await (await aiPlaylistPOST(json({ prompt: "rainy", save: false }))).json();
     expect(body.scores[0].reasons.length).toBeGreaterThan(0);
     expect(body.scores[0].signals).toBeDefined();
+  });
+});
+
+describe("/api/stream/[id] quality rungs", () => {
+  const firstLine = (bytes: Uint8Array, length = 3) => Buffer.from(bytes.subarray(0, length)).toString("latin1");
+
+  it("serves a tagged MP3 for an MP3 rung", async () => {
+    const res = await streamGET(new Request("http://localhost/api/stream/x?q=mp3-32"), params(TRACKS[0].id));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("audio/mpeg");
+    expect(res.headers.get("x-quality")).toBe("mp3-32");
+    expect(res.headers.get("x-data-saver")).toBe("true");
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect(firstLine(bytes)).toBe("ID3");
+    expect(bytes.byteLength).toBeGreaterThan(5000);
+  }, 30000);
+
+  it("serves a 48 kHz WAV with correct range geometry", async () => {
+    const total = await streamHEAD(new Request("http://localhost/api/stream/x?q=wav-48", { method: "HEAD" }), params(TRACKS[0].id));
+    const totalBytes = Number(total.headers.get("content-length"));
+    expect(total.headers.get("x-quality")).toBe("wav-48");
+
+    const head = await streamGET(
+      new Request("http://localhost/api/stream/x?q=wav-48", { headers: { range: "bytes=0-43" } }),
+      params(TRACKS[0].id),
+    );
+    expect(head.status).toBe(206);
+    expect(head.headers.get("content-range")).toBe(`bytes 0-43/${totalBytes}`);
+    const bytes = new Uint8Array(await head.arrayBuffer());
+    expect(firstLine(bytes, 4)).toBe("RIFF");
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    expect(view.getUint32(24, true)).toBe(48000);
+    expect(view.getUint16(34, true)).toBe(16);
+  });
+
+  it("serves 24-bit WAV masters", async () => {
+    const res = await streamHEAD(new Request("http://localhost/api/stream/x?q=wav-48-24", { method: "HEAD" }), params(TRACKS[0].id));
+    expect(res.headers.get("x-quality")).toBe("wav-48-24");
+    const bytes24 = Number(res.headers.get("content-length"));
+    const res16 = await streamHEAD(new Request("http://localhost/api/stream/x?q=wav-48", { method: "HEAD" }), params(TRACKS[0].id));
+    const bytes16 = Number(res16.headers.get("content-length"));
+    expect(bytes24).toBeGreaterThan(bytes16);
+  });
+
+  it("rejects an unknown rung", async () => {
+    const res = await streamGET(new Request("http://localhost/api/stream/x?q=kbps-9000"), params(TRACKS[0].id));
+    expect(res.status).toBe(400);
+  });
+
+  it("serves partial MP3 content when a range is requested", async () => {
+    const res = await streamGET(
+      new Request("http://localhost/api/stream/x?q=mp3-32", { headers: { range: "bytes=0-511" } }),
+      params(BOLLYWOOD_TRACKS[0].id),
+    );
+    expect(res.status).toBe(206);
+    expect(Number(res.headers.get("content-length"))).toBe(512);
+    expect(res.headers.get("content-range")).toMatch(/^bytes 0-511\/\d+$/);
+  }, 30000);
+});
+
+describe("/api/download/[id]", () => {
+  it("downloads an MP3 with a friendly filename", async () => {
+    const res = await downloadFileGET(new Request("http://localhost/api/download/x?q=mp3-32"), params(BOLLYWOOD_TRACKS[0].id));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("audio/mpeg");
+    const disposition = res.headers.get("content-disposition") ?? "";
+    expect(disposition).toContain("attachment;");
+    expect(disposition).toContain(".mp3");
+    expect(disposition).toContain("filename*=UTF-8''");
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect(Buffer.from(bytes.subarray(0, 3)).toString("latin1")).toBe("ID3");
+  }, 30000);
+
+  it("downloads a WAV at the requested depth", async () => {
+    const res = await downloadFileGET(new Request("http://localhost/api/download/x?q=wav-22"), params(TRACKS[0].id));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("audio/wav");
+    expect(res.headers.get("content-disposition")).toContain(".wav");
+  }, 60000);
+
+  it("404s for an unknown track", async () => {
+    const res = await downloadFileGET(new Request("http://localhost/api/download/x"), params("ghost"));
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/qualities", () => {
+  it("lists every audio rung with sizes", async () => {
+    const body = await (await qualitiesGET(new Request("http://localhost/api/qualities?id=" + BOLLYWOOD_TRACKS[0].id))).json();
+    expect(body.audio.length).toBeGreaterThanOrEqual(8);
+    expect(body.default).toBe("mp3-128");
+    expect(body.track.id).toBe(BOLLYWOOD_TRACKS[0].id);
+    const mp3 = body.audio.filter((entry: { family: string }) => entry.family === "mp3");
+    const sizes = mp3.map((entry: { bytes: number }) => entry.bytes);
+    expect([...sizes].sort((a: number, b: number) => a - b)).toEqual(sizes);
+    for (const entry of body.audio) {
+      expect(entry.streamUrl).toContain("?q=");
+      expect(entry.downloadUrl).toContain("/api/download/");
+    }
+  });
+
+  it("lists the video ladder up to 8K", async () => {
+    const body = await (await qualitiesGET(new Request("http://localhost/api/qualities"))).json();
+    expect(body.video[0].id).toBe("240p");
+    expect(body.video.at(-1).id).toBe("8k");
+    expect(body.videoExport.clientSide).toBe(true);
+  });
+
+  it("404s for an unknown track", async () => {
+    const res = await qualitiesGET(new Request("http://localhost/api/qualities?id=ghost"));
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("Bollywood in the catalog API", () => {
+  it("ships curated collections", async () => {
+    const body = await (await catalogGET(new Request("http://localhost/api/catalog"))).json();
+    expect(body.collections.length).toBeGreaterThanOrEqual(4);
+    const romance = body.collections.find((c: { id: string }) => c.id === "col_bollywood-romance");
+    expect(romance.trackIds.length).toBeGreaterThan(2);
+  });
+
+  it("gives Hindi film music a permanent home row", async () => {
+    const body = await (await recommendationsGET(new Request("http://localhost/api/recommendations"))).json();
+    const row = body.rows.find((entry: { title: string }) => entry.title.includes("Bollywood"));
+    expect(row).toBeDefined();
+    expect(row.tracks.length).toBeGreaterThan(3);
+    for (const track of row.tracks) expect(track.genres).toContain("bollywood");
+  });
+
+  it("serves Bollywood tracks with native titles", async () => {
+    const body = await (await catalogGET(new Request("http://localhost/api/catalog"))).json();
+    const hindi = body.tracks.filter((track: { nativeTitle?: string }) => track.nativeTitle);
+    expect(hindi.length).toBeGreaterThanOrEqual(10);
   });
 });
