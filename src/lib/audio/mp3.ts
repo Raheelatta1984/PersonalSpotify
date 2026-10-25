@@ -49,7 +49,7 @@ export function createMp3Encoder(sampleRate: number, kbps: number): Mp3EncoderHa
       while (pending.length - offset >= GRANULE) {
         const block = Int16Array.from(pending.slice(offset, offset + GRANULE));
         const encoded = encoder.encodeBuffer(block);
-        if (encoded.length) chunks.push(encoded);
+        if (encoded.length) chunks.push(toBytes(encoded));
         offset += GRANULE;
       }
       if (offset) pending.splice(0, offset);
@@ -61,18 +61,29 @@ export function createMp3Encoder(sampleRate: number, kbps: number): Mp3EncoderHa
         const block = Int16Array.from(pending);
         pending.length = 0;
         const encoded = encoder.encodeBuffer(block);
-        if (encoded.length) chunks.push(encoded);
+        if (encoded.length) chunks.push(toBytes(encoded));
       }
       const tail = encoder.flush();
-      if (tail.length) chunks.push(tail);
+      if (tail.length) chunks.push(toBytes(tail));
       return concat(chunks);
     },
   };
 }
 
+/**
+ * lamejs hands back `Int8Array` buffers. They carry the right bytes, but Node's
+ * HTTP layer rejects them (`ERR_INVALID_ARG_TYPE`) when a `ReadableStream` of
+ * them is written to a socket — the response then dies mid-song. Every byte that
+ * leaves this module is therefore a real `Uint8Array` view over the same memory.
+ */
+function toBytes(encoded: Int8Array | Uint8Array): Uint8Array {
+  if (encoded instanceof Uint8Array) return encoded;
+  return new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength);
+}
+
 function concat(chunks: Uint8Array[]): Uint8Array {
   if (!chunks.length) return new Uint8Array(0);
-  if (chunks.length === 1) return chunks[0];
+  if (chunks.length === 1) return toBytes(chunks[0]);
   let total = 0;
   for (const chunk of chunks) total += chunk.length;
   const out = new Uint8Array(total);

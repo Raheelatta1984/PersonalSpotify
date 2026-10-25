@@ -128,6 +128,14 @@ export function encodeTrackAudio(track: Track, quality: AudioQuality): EncodedAu
 /**
  * Stream an MP3 while it is being synthesised, so playback starts in a few
  * hundred milliseconds instead of waiting for a multi-second full render.
+ *
+ * Two invariants matter and are covered by tests:
+ *  - every chunk is a genuine `Uint8Array`; lamejs returns `Int8Array`, which
+ *    Node's HTTP layer refuses to write (`ERR_INVALID_ARG_TYPE`), which used to
+ *    truncate the response at the final chunk;
+ *  - the bytes streamed are byte-identical to `encodeTrackAudio` for the same
+ *    rung, ID3 header included, so the cache is never seeded with a poorer file.
+ *
  * The completed file is dropped into the cache for the next listener.
  */
 export function streamTrackMp3(track: Track, quality: AudioQuality): ReadableStream<Uint8Array> {
@@ -153,7 +161,12 @@ export function streamTrackMp3(track: Track, quality: AudioQuality): ReadableStr
 
   return new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(wrapMp3(new Uint8Array(0), tagsFor(track, quality)));
+      // The ID3 header is part of the file, so it belongs in the cache too —
+      // otherwise the first stream would poison the LRU with an untagged MP3 and
+      // later downloads would come back without title/artist metadata.
+      const head = wrapMp3(new Uint8Array(0), tagsFor(track, quality));
+      controller.enqueue(head);
+      collected.push(head);
     },
     pull(controller) {
       encoder ??= createMp3Encoder(sampleRate, kbps);

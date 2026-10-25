@@ -19,7 +19,7 @@ import {
 import { buildId3Tag, createMp3Encoder, encodeMp3, floatToInt16, wrapMp3 } from "@/lib/audio/mp3";
 import { decodeWav, encodeWav } from "@/lib/audio/wav";
 import { geometryFor, fullWavCached, renderWavBytes } from "@/lib/audio/stream";
-import { clearQualityCache, encodeTrackAudio, downloadFileName, qualityCacheStats } from "@/lib/audio/encode";
+import { clearQualityCache, encodeTrackAudio, downloadFileName, qualityCacheStats, streamTrackMp3 } from "@/lib/audio/encode";
 import { renderRange, trackSampleCount } from "@/lib/audio/synth";
 import { TRACKS, BOLLYWOOD_TRACKS } from "@/lib/catalog/tracks";
 
@@ -343,4 +343,56 @@ describe("encodeTrackAudio", () => {
     expect(name.endsWith(".mp3")).toBe(true);
     expect(name).not.toMatch(/[\\/:*?"<>|]/);
   });
+});
+
+describe("streamed MP3 output", () => {
+  /** Drain a ReadableStream of bytes into one buffer, recording the chunk classes. */
+  async function drain(stream: ReadableStream<Uint8Array>) {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    const classes = new Set<string>();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      classes.add(value.constructor.name);
+    }
+    const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { bytes, classes, chunkCount: chunks.length };
+  }
+
+  it("only ever hands out real Uint8Array chunks", async () => {
+    // lamejs returns Int8Array; Node's server rejects those with
+    // ERR_INVALID_ARG_TYPE and the response dies part-way through the song.
+    const { classes, chunkCount } = await drain(streamTrackMp3(track, qualityOr("mp3-32")));
+    expect(chunkCount).toBeGreaterThan(1);
+    expect([...classes]).toEqual(["Uint8Array"]);
+  }, 60000);
+
+  it("streams the same bytes a buffered download would produce", async () => {
+    const quality = qualityOr("mp3-32");
+    clearQualityCache();
+    const streamed = await drain(streamTrackMp3(track, quality));
+    const buffered = encodeTrackAudio(track, quality).bytes;
+    expect(streamed.bytes.byteLength).toBe(buffered.byteLength);
+    expect(Buffer.from(streamed.bytes).equals(Buffer.from(buffered))).toBe(true);
+    // the ID3 header survives the streaming path, so the LRU is not poisoned
+    // with an untagged file that later downloads would hand back
+    expect(Buffer.from(streamed.bytes.subarray(0, 3)).toString("latin1")).toBe("ID3");
+    expect(Buffer.from(buffered.subarray(0, 3)).toString("latin1")).toBe("ID3");
+  }, 60000);
+
+  it("replays a cached encode in one piece", async () => {
+    const quality = qualityOr("mp3-32");
+    await drain(streamTrackMp3(track, quality)); // fills the LRU
+    const again = await drain(streamTrackMp3(track, quality));
+    expect(again.chunkCount).toBe(1);
+    expect([...again.classes]).toEqual(["Uint8Array"]);
+  }, 60000);
 });

@@ -83,7 +83,7 @@ npm run dev        # dev server (0.0.0.0:3000)
 npm run build      # production build
 npm run start      # production server
 npm run typecheck  # tsc --noEmit
-npm run test       # 2,241 tests across 16 suites
+npm run test       # 2,244 tests across 16 suites
 npm run verify     # typecheck + tests
 npm run index:audio# pre-build the audio fingerprint index
 ```
@@ -416,7 +416,7 @@ The synth is the only source, so every output format is produced on demand:
 ## Testing
 
 ```bash
-npm test            # 2,241 cases across 16 suites, ~150 s
+npm test            # 2,244 cases across 16 suites, ~150 s
 npm run verify      # typecheck + tests
 npm run test:audio  # synth + fingerprint + identify only
 npm run test:ui     # the jsdom UI suite
@@ -430,7 +430,7 @@ npm run test:ui     # the jsdom UI suite
 | `stream` | 99 | geometry, byte ranges (all alignments), header integrity, LRU, chunk stitching, MP3/WAV per-track integrity |
 | `search` | 351 | index, embeddings, query parsing, filters, exact/typo/artist/genre/mood queries across the catalog, Devanagari queries, NL scenarios |
 | `catalog` | 724 | schema invariants for every track and artist, including the Bollywood shelf |
-| `quality` | 37 | the ladder (32 kbps → 24-bit WAV), MP3 framing/ID3, WAV headers, size estimates, per-rung encoding |
+| `quality` | 40 | the ladder (32 kbps → 24-bit WAV), MP3 framing/ID3, WAV headers, size estimates, per-rung encoding, and streamed-vs-buffered byte identity |
 | `bollywood` | 20 | the shelf is populated, Hindi metadata is valid, every filmi track sounds, searches and identifies |
 | `mp4-export` | 10 | WebCodecs orchestration with a stubbed encoder: frame count/timestamps, encoder config per resolution, AAC muxing, progress, cancel, no-WebCodecs refusal |
 | `library` | 52 | likes, events, playlists, analytics, streaks, taste, radio |
@@ -505,7 +505,7 @@ src/
     store/                library, playlists, events, analytics, radio
     client/               mic capture + PCM decode · mp4-export (WebCodecs + mp4-muxer)
 scripts/build-index.ts    pre-build the fingerprint index
-tests/                    16 suites, 2,241 cases (incl. jsdom UI suite)
+tests/                    16 suites, 2,244 cases (incl. jsdom UI suite)
 instrumentation.ts        warms the fingerprint index at server boot
 ```
 
