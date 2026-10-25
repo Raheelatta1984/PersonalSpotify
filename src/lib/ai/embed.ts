@@ -132,7 +132,7 @@ export function embedText(text: string): Vector {
 export function embedTrack(track: Track): Vector {
   const vec = new Float32Array(EMBED_DIM);
 
-  addText(vec, `${track.title} ${track.artist}`, 1.6);
+  addText(vec, `${track.title} ${track.nativeTitle ?? ""} ${track.artist}`, 1.6);
   addText(vec, track.description, 1.0);
   addText(vec, track.soundsLike.join(" "), 1.5);
   addText(vec, track.tags.join(" "), 0.9);

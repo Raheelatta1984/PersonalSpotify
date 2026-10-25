@@ -2,14 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   ARTISTS,
   ARTIST_BY_ID,
+  BOLLYWOOD_TRACKS,
   SCALES,
   TRACKS,
   TRACK_BY_ID,
   getTrack,
+  isBollywoodTrack,
   tracksOfArtist,
 } from "@/lib/catalog/tracks";
 
-const VALID_GENRES = ["lo-fi", "ambient", "synthwave", "indie", "jazz", "electronic", "acoustic", "hip-hop", "classical", "pop", "rock", "house"];
+const VALID_GENRES = [
+  "lo-fi", "ambient", "synthwave", "indie", "jazz", "electronic", "acoustic", "hip-hop", "classical",
+  "pop", "rock", "house", "bollywood", "sufi",
+];
 const VALID_MOODS = ["calm", "focused", "energetic", "melancholic", "uplifting", "dreamy", "dark", "romantic", "nostalgic", "triumphant"];
 
 describe("catalog shape", () => {
@@ -99,7 +104,7 @@ describe("track integrity", () => {
       for (const colour of track.palette) expect(colour).toMatch(/^#[0-9a-f]{6}$/i);
     });
     it(`${track.id}: uses a valid musical key label`, () => {
-      expect(track.musicalKey).toMatch(/^[A-G]#?\d (minor|major|dorian|lydian|phrygian|pentatonic)$/);
+      expect(track.musicalKey).toMatch(/^[A-G]#?\d (minor|major|dorian|lydian|phrygian|pentatonic|bhairavi|kirwani|khamaj)$/);
     });
     it(`${track.id}: has a playable spec`, () => {
       expect(track.spec.bars).toBeGreaterThan(4);
@@ -169,5 +174,51 @@ describe("catalog balance", () => {
       decades.set(d, (decades.get(d) ?? 0) + 1);
     }
     expect(decades.size).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("Bollywood & filmi collection", () => {
+  it("has a real Hindi shelf", () => {
+    expect(BOLLYWOOD_TRACKS.length).toBeGreaterThanOrEqual(10);
+  });
+  it("classifies the shelf consistently", () => {
+    for (const track of BOLLYWOOD_TRACKS) {
+      expect(isBollywoodTrack(track)).toBe(true);
+      expect(track.genres.includes("bollywood") || track.genres.includes("sufi")).toBe(true);
+    }
+  });
+  it("carries Devanagari titles and a language tag", () => {
+    for (const track of BOLLYWOOD_TRACKS) {
+      expect(track.nativeTitle).toBeTruthy();
+      expect(track.nativeTitle).toMatch(/[\u0900-\u097F]/);
+      expect(track.language).toBe("hi");
+    }
+  });
+  it("is searchable by Hindi/filmi vocabulary", () => {
+    for (const track of BOLLYWOOD_TRACKS) {
+      const vocabulary = [...track.tags, ...track.genres].map((tag) => tag.toLowerCase());
+      expect(vocabulary.some((tag) => ["bollywood", "hindi", "filmi", "sufi", "ghazal", "qawwali"].includes(tag))).toBe(true);
+    }
+  });
+  it("uses the filmi voices instead of the plain synth palette", () => {
+    const filmi = BOLLYWOOD_TRACKS.filter(
+      (track) => track.spec.voices.tabla || track.spec.voices.sitar || track.spec.voices.flute || track.spec.voices.strings,
+    );
+    expect(filmi.length).toBeGreaterThanOrEqual(BOLLYWOOD_TRACKS.length - 1);
+  });
+  it("covers romance, celebration and grief", () => {
+    const moods = new Set(BOLLYWOOD_TRACKS.flatMap((track) => track.moods));
+    expect(moods.has("romantic")).toBe(true);
+    expect(moods.has("energetic")).toBe(true);
+    expect(moods.has("melancholic")).toBe(true);
+  });
+  it("renders audible audio (no silent filmi tracks)", async () => {
+    const { renderTrack } = await import("@/lib/audio/synth");
+    for (const track of BOLLYWOOD_TRACKS.slice(0, 3)) {
+      const samples = renderTrack(track.spec, 4000);
+      let peak = 0;
+      for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
+      expect(peak).toBeGreaterThan(0.05);
+    }
   });
 });

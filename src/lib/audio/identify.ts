@@ -17,7 +17,7 @@ import {
   type MatchIndex,
 } from "./fingerprint";
 import { resampleMono, decodeWav } from "./wav";
-import { clamp, sharedState } from "../util";
+import { clamp, hashString, sharedState } from "../util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { DATA_DIR, ensureDir, readBinary, readJson, writeBinary, writeJson } from "../storage";
@@ -29,9 +29,15 @@ interface IndexMeta {
   trackIds: string[];
   durations: Record<string, number>;
   count: number;
+  /**
+   * Hash of every track's *rendering spec*, not just its id.
+   * Without this, changing the synth (a new voice, a new seed) silently reuses a
+   * cached index built from different audio and identification goes wrong.
+   */
+  signature?: string;
 }
 
-const INDEX_VERSION = 4;
+const INDEX_VERSION = 5;
 const INDEX_META_FILE = "cache/fingerprint-index.meta.json";
 const INDEX_BIN_FILE = "cache/fingerprint-index.bin";
 
@@ -61,11 +67,19 @@ function trackIndexMapping(tracks: Track[]): Map<string, number> {
   return new Map(tracks.map((t, i) => [t.id, i]));
 }
 
+/** Stable fingerprint of the audio the index was built from. */
+export function catalogSignature(tracks: Track[] = TRACKS): string {
+  const parts = tracks.map((t) => `${t.id}@${hashString(JSON.stringify(t.spec)).toString(36)}`);
+  return `${tracks.length}-${hashString(parts.join("|")).toString(36)}`;
+}
+
 async function loadFromDisk(trackIds: string[]): Promise<MatchIndex | null> {
   const meta = await readJson<IndexMeta | null>(INDEX_META_FILE, null);
   if (!meta || meta.version !== INDEX_VERSION) return null;
   if (meta.trackIds.length !== trackIds.length) return null;
   if (!meta.trackIds.every((id, i) => id === trackIds[i])) return null;
+  // Same ids but different audio (spec/synth changed) => rebuild.
+  if (meta.signature && meta.signature !== catalogSignature()) return null;
 
   const raw = await readBinary(path.join(DATA_DIR, INDEX_BIN_FILE));
   if (!raw || raw.byteLength < meta.count * 7) return null;
@@ -126,6 +140,7 @@ async function saveToDisk(idx: MatchIndex, tracks: Track[]): Promise<void> {
     trackIds: ids,
     durations: Object.fromEntries(idx.trackDurations),
     count,
+    signature: catalogSignature(tracks),
   };
   await writeJson(INDEX_META_FILE, meta);
 }

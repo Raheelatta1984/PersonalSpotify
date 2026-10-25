@@ -13,13 +13,16 @@ import { WebMusicView } from "./views/WebMusicView";
 import { LibraryView } from "./views/LibraryView";
 import { AnalyticsView } from "./views/AnalyticsView";
 import { PlaylistView } from "./views/PlaylistView";
+import { BollywoodView } from "./views/BollywoodView";
+import { QualityPanel } from "./QualityPanel";
 
-type View = "home" | "search" | "identify" | "online" | "web" | "library" | "analytics" | "playlist";
+type View = "home" | "search" | "identify" | "bollywood" | "online" | "web" | "library" | "analytics" | "playlist";
 
 const NAV: { id: View; label: string; icon: string; badge?: string }[] = [
   { id: "home", label: "Home", icon: "⌂" },
   { id: "search", label: "AI Search", icon: "✦", badge: "AI" },
   { id: "identify", label: "Identify", icon: "◎", badge: "mic" },
+  { id: "bollywood", label: "Bollywood", icon: "❁", badge: "हिंदी" },
   { id: "web", label: "Web Music", icon: "♫", badge: "mp3juice" },
   { id: "online", label: "Web & Browser", icon: "⇗" },
   { id: "library", label: "Library", icon: "♫" },
@@ -31,6 +34,7 @@ export function App() {
   const [view, setView] = useState<View>("home");
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [qualityOpen, setQualityOpen] = useState(false);
 
   const refreshPlaylists = useCallback(async () => {
     try {
@@ -140,6 +144,7 @@ export function App() {
         {view === "home" ? <HomeView onOpenPlaylist={openPlaylist} onNavigate={(v) => setView(v as View)} /> : null}
         {view === "search" ? <SearchView /> : null}
         {view === "identify" ? <IdentifyView /> : null}
+        {view === "bollywood" ? <BollywoodView /> : null}
         {view === "online" ? <OnlineView /> : null}
         {view === "web" ? <WebMusicView /> : null}
         {view === "library" ? <LibraryView onOpenPlaylist={openPlaylist} /> : null}
@@ -186,7 +191,8 @@ export function App() {
         ))}
       </div>
 
-      <PlayerBar />
+      <QualityPanel open={qualityOpen} onClose={() => setQualityOpen(false)} />
+      <PlayerBar onOpenQuality={() => setQualityOpen((prev) => !prev)} />
     </div>
   );
 }

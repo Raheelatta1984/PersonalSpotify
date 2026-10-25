@@ -16,7 +16,10 @@ import { conceptsFor } from "./embed";
 import { TRACKS } from "../catalog/tracks";
 import { clamp } from "../util";
 
-const GENRES: Genre[] = ["lo-fi", "ambient", "synthwave", "indie", "jazz", "electronic", "acoustic", "hip-hop", "classical", "pop", "rock", "house"];
+const GENRES: Genre[] = [
+  "lo-fi", "ambient", "synthwave", "indie", "jazz", "electronic", "acoustic", "hip-hop", "classical",
+  "pop", "rock", "house", "bollywood", "sufi",
+];
 const MOODS: Mood[] = ["calm", "focused", "energetic", "melancholic", "uplifting", "dreamy", "dark", "romantic", "nostalgic", "triumphant"];
 
 /** Mood -> where it sits in energy/valence space. */
@@ -46,6 +49,8 @@ const CONCEPT_TO_GENRES: Record<string, Genre[]> = {
   pop: ["pop"],
   hiphop: ["hip-hop"],
   electronic: ["electronic"],
+  bollywood: ["bollywood"],
+  sufi: ["sufi", "bollywood"],
 };
 
 const CONCEPT_TO_MOODS: Record<string, Mood[]> = {
@@ -66,6 +71,8 @@ const CONCEPT_TO_MOODS: Record<string, Mood[]> = {
   cinematic: ["triumphant", "dark"],
   morning: ["uplifting", "dreamy"],
   evening: ["romantic", "nostalgic"],
+  bollywood: ["romantic"],
+  sufi: ["melancholic", "triumphant"],
 };
 
 const NEGATIONS = ["no", "not", "without", "dont", "don't", "avoid", "except", "minus", "nothing"];

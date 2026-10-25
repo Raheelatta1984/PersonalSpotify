@@ -2,8 +2,9 @@
 
 import { usePlayer } from "./PlayerProvider";
 import { Cover, formatTime } from "./ui";
+import { QualitySelect } from "./QualityPanel";
 
-export function PlayerBar() {
+export function PlayerBar({ onOpenQuality }: { onOpenQuality?: () => void }) {
   const player = usePlayer();
   const { current, playing, time, duration } = player;
   const progress = duration > 0 ? Math.min(1, time / duration) : 0;
@@ -82,7 +83,16 @@ export function PlayerBar() {
       </div>
 
       <div className="player-right">
-        <button className="ctrl" onClick={() => player.setQueueOpen(!player.queueOpen)} title="Queue" aria-label="Queue">
+        <QualitySelect />
+        <button
+          className="ctrl"
+          onClick={onOpenQuality}
+          title="Quality &amp; downloads (MP3 · WAV · MP4 up to 8K)"
+          aria-label="Quality and downloads"
+        >
+          ⤓
+        </button>
+        <button className="ctrl queue-ctrl" onClick={() => player.setQueueOpen(!player.queueOpen)} title="Queue" aria-label="Queue">
           ☰ {player.queue.length}
         </button>
         <button className="ctrl" onClick={player.toggleMute} title={player.muted ? "Unmute" : "Mute"} aria-label="Mute">

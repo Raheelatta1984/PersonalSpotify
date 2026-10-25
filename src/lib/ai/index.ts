@@ -50,6 +50,8 @@ function addTerms(map: Map<string, number>, text: string, weight: number) {
 export function buildDoc(track: Track): IndexedDoc {
   const terms = new Map<string, number>();
   addTerms(terms, track.title, FIELD_WEIGHTS.title);
+  // Devanagari title: searchable as typed ("बारिश की चादर") as well as romanised.
+  if (track.nativeTitle) addTerms(terms, track.nativeTitle, FIELD_WEIGHTS.title * 0.9);
   addTerms(terms, track.artist, FIELD_WEIGHTS.artist);
   addTerms(terms, track.album, FIELD_WEIGHTS.album);
   addTerms(terms, track.tags.join(" "), FIELD_WEIGHTS.tags);
@@ -69,7 +71,7 @@ export function buildDoc(track: Track): IndexedDoc {
 
   const vocab = new Set<string>();
   for (const t of tokenize(
-    [track.title, track.artist, track.album, track.tags.join(" "), track.genres.join(" "), track.moods.join(" "), track.description, track.soundsLike.join(" ")].join(" "),
+    [track.title, track.nativeTitle ?? "", track.artist, track.album, track.tags.join(" "), track.genres.join(" "), track.moods.join(" "), track.description, track.soundsLike.join(" ")].join(" "),
   )) {
     vocab.add(t);
   }

@@ -2,7 +2,7 @@
   "name": "songhub",
   "version": "1.0.0",
   "private": true,
-  "description": "SongHub \u2014 an AI-native personal music streaming platform: hybrid AI search, Shazam-style identification, in-app web browser and temporary offline playback.",
+  "description": "SongHub — an AI-native personal music streaming platform: hybrid AI search, Shazam-style identification, in-app web browser and temporary offline playback.",
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
@@ -17,6 +17,8 @@
     "test:web": "vitest run tests/web-music.test.ts"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
+    "mp4-muxer": "^5.2.2",
     "next": "16.4.3",
     "react": "19.3.1",
     "react-dom": "19.3.1"
